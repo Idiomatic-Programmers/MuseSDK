@@ -43,3 +43,5 @@ bin/*
 
 # Ignore IDE specific files
 .idea
+.vscode
+cmake-build-debug
