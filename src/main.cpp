@@ -12,18 +12,50 @@ class MuseDevice{
         string address;
         int rssi;
 
-        bool connect() {
+
+        void startStream() {
             cout << "Attempting to connect to " << this->name << " with address " << this->address << endl;
+            BLEGATTStateMachine gatt;
+            function<void(const PDUNotificationOrIndication&)> notify_cb = [&](const PDUNotificationOrIndication& n) {
+                cout << "Notification 1: " << n.value().first << endl;
+                cout << "Notification 2: " << n.value().second << endl;
+            };
+
+            function<void()> cb = [&gatt, &notify_cb]() {
+                pretty_print_tree(gatt);
+
+                for (auto& service: gatt.primary_services) {
+                    for (auto& characteristic: service.characteristics) {
+                        try{
+                            characteristic.cb_notify_or_indicate = notify_cb;
+                            characteristic.set_notify_and_indicate(true, true);
+                        } catch (exception& e) {}
+
+                    }
+                }
+            };
+
+            gatt.cb_disconnected = [](BLEGATTStateMachine::Disconnect d) {
+                cerr << "Disconnected for reason " << BLEGATTStateMachine::get_disconnect_string(d) << endl;
+                exit(1);
+            };
+
+            gatt.setup_standard_scan(cb);
+            gatt.connect_blocking(this->address);
+
+            for(;;)
+                gatt.read_and_process_next();
         }
 
 };
 
 int main() {
     HCIScanner scanner;
-    BLEGATTStateMachine gatt;
     MuseDevice device;
 
     bool flag = true;
+
+    cout << "Searching for a Muse device..." << endl << endl;
 
     while (flag) {
             vector<AdvertisingResponse> ads = scanner.get_advertisements();
@@ -44,12 +76,7 @@ int main() {
             }
     }
 
-    if (device.connect()) {
-        cout << "Successfully Connected" << endl;
-    } else {
-        cout << "Could not connect to " << device.name << endl;
-        return 1;
-    }
+    device.startStream();
 
     return 0;
 }
